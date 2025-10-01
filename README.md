@@ -6,6 +6,8 @@ A script for automatically reading incoming messages and staying online during t
 ***
 - Auto-read messages from all chats  
 - Keep online from 08:00 to 23:00 (remove `is_day` check if not needed)
+- Reading personal chat and groups (not bots)
+- Logger
 
 ## Installation
 ***
