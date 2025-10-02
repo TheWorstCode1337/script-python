@@ -3,15 +3,49 @@ import datetime
 import logging
 from telethon import TelegramClient, events, functions
 from telethon.errors import FloodWaitError, RPCError
+from enum import Enum, auto
+from telethon.tl.types import DocumentAttributeSticker
 
-# Настройка логирования
+#------ Types Message ------
+class MessageType(Enum):
+    TEXT = auto()
+    VOICE = auto()
+    PHOTO = auto()
+    VIDEO = auto()
+    STICKER = auto()
+    ANIM_STICKER = auto()
+    VIDEO_STICKER = auto()
+
+def get_message_types(msg):
+    if msg.text:
+        return MessageType.TEXT
+    if msg.voice or msg.audio:
+        return MessageType.VOICE
+    if msg.photo:
+        return MessageType.PHOTO
+    if msg.video:
+        if msg.document:
+            for attr in msg.document.attributes:
+                if isinstance(attr, DocumentAttributeSticker):
+                    if msg.document.mime_type == "video/webm":
+                        return MessageType.VIDEO_STICKER
+        return MessageType.VIDEO            
+    if msg.sticker:
+        mime = getattr(msg.sticker, "mime_type", "")
+        if mime == "application/x-tgsticker":
+            return MessageType.ANIM_STICKER
+        return MessageType.STICKER
+    return MessageType.TEXT
+#---------------------------
+
+# ------- Logging ----------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler(), logging.FileHandler("telegram_bot.log")]
 )
 logger = logging.getLogger(__name__)
-
+#---------------------------
 # Константы
 API_ID = 12345678
 API_HASH = 'your-api-hash'
@@ -19,19 +53,15 @@ SESSION_NAME = 'session_autoread'
 KEEPONLINE_INTERVAL = 45
 DAY_START = 8
 DAY_END = 23
-
-# Глобальный флаг для остановки
 stop_request = False
 
 #---------- Day Settings ------------
 def is_day() -> bool:
-    """Проверяет, находится ли текущее время в дневном диапазоне (8:00–23:00)."""
     hour = datetime.datetime.now().hour
     return DAY_START <= hour < DAY_END
 #------------------------------------
 
 async def keep_online_task(client: TelegramClient):
-    """Поддерживает статус 'онлайн' в дневное время с заданным интервалом."""
     global stop_request
     while not stop_request:
         try:
@@ -54,9 +84,19 @@ async def keep_online_task(client: TelegramClient):
 async def auto_mark_read(event):
     if not is_day():
         return
+    
+    sender = await event.get_sender()
+    username = sender.username if sender and sender.username else None
+    msg_type = get_message_types(event.message)
+    
     try:
         await event.mark_read()
-        logger.info(f"Прочитано: {event.sender_id} -> {event.chat_id} (msg_id={event.message.id})")
+        logger.info(
+            f"Прочитано: {event.sender_id} (@{username}) -> {event.chat_id} \n"
+            f"Message Id: {event.message.id} \n"
+            f"Message Type: {msg_type.name.capitalize()} \n"
+            f"--------------------------------------------"
+        )
     except FloodWaitError as e:
         logger.warning(f"FloodWaitError при чтении, ожидание {e.seconds} секунд")
         await asyncio.sleep(e.seconds + 1)
